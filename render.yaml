@@ -3,7 +3,7 @@ services:
     name: isewr-backend
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn server:app -k uvicorn.workers.UvicornWorker
+    startCommand: gunicorn server:handler --bind 0.0.0.0:$PORT --worker-class uvicorn.workers.UvicornWorker
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
@@ -22,4 +22,6 @@ services:
       - key: GOOGLE_CLOUD_PROJECT
         sync: false
       - key: GOOGLE_APPLICATION_CREDENTIALS
-        sync: false 
+        sync: false
+    regions:
+      - oregon
