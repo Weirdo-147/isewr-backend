@@ -2,11 +2,15 @@
 # exit on error
 set -o errexit
 
+# Install dependencies
 pip install -r requirements.txt
 
 # Create necessary directories
 mkdir -p /opt/render/project/src/uploads
 mkdir -p /opt/render/project/src/uploads/videos
+
+echo "Environment setup completed. Directories created."
+echo "Google credentials will be processed at runtime by the application."
 
 # If we have credentials in environment as base64, write them to a file
 # This is already handled in main.py but we'll keep it here for reference

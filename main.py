@@ -50,12 +50,44 @@ CLIPDROP_API_KEY = os.getenv("CLIPDROP_API_KEY")
 IMAGINE_ART_API_KEY = os.getenv("IMAGINE_ART_API_KEY")
 SIGHTENGINE_API_USER = os.getenv("SIGHTENGINE_API_USER")
 SIGHTENGINE_API_SECRET = os.getenv("SIGHTENGINE_API_SECRET")
+
+# Handle Google Cloud credentials
+GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
+GOOGLE_CREDENTIALS_PATH = None
+
+# Check for base64-encoded credentials
 creds_base64 = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 if creds_base64:
-    creds_json = base64.b64decode(creds_base64).decode('utf-8')
-    with open("temp-credentials.json", "w") as f:
-        f.write(creds_json)
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "temp-credentials.json"
+    try:
+        # Decode the base64 credentials
+        creds_json = base64.b64decode(creds_base64).decode('utf-8')
+        
+        # Determine the appropriate path based on the environment
+        if os.environ.get("RENDER"):
+            creds_path = "/opt/render/project/src/google-credentials.json"
+        else:
+            creds_path = "temp-credentials.json"
+            
+        # Write the credentials to a file
+        with open(creds_path, "w") as f:
+            f.write(creds_json)
+            
+        # Set the environment variable to point to the credentials file
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
+        GOOGLE_CREDENTIALS_PATH = creds_path
+        print(f"Google Cloud credentials written to {creds_path}")
+    except Exception as e:
+        print(f"Error processing Google credentials: {e}")
+else:
+    # Check if the path is provided directly
+    direct_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_PATH")
+    if direct_path and os.path.exists(direct_path):
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = direct_path
+        GOOGLE_CREDENTIALS_PATH = direct_path
+        print(f"Using Google credentials from path: {direct_path}")
+    else:
+        print("No Google credentials found in environment variables")
+
 vision_client = vision.ImageAnnotatorClient()
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
 
@@ -87,7 +119,10 @@ allowed_origins = [
     "https://isewr-frontend.vercel.app",
     "https://isewr.vercel.app",
     "https://isewr-frontend.onrender.com",
-    "https://isewr.onrender.com"
+    "https://isewr.onrender.com",
+    "www.lenslynx.art",
+    "https://www.lenslynx.art",
+    "lenslynx.art"
 ]
 
 # Add additional origins from environment if specified
@@ -172,25 +207,32 @@ vision_client = None
 google_cloud_initialized = False
 try:
     # Initialize Google Cloud Vision client
-    if GOOGLE_APPLICATION_CREDENTIALS and os.path.exists(GOOGLE_APPLICATION_CREDENTIALS):
+    if GOOGLE_CREDENTIALS_PATH and os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")):
+        print("Initializing Google Cloud Vision client...")
         vision_client = vision.ImageAnnotatorClient()
+        
         # Initialize Vertex AI
-        aiplatform.init(project=GOOGLE_CLOUD_PROJECT)
+        if GOOGLE_CLOUD_PROJECT:
+            print(f"Initializing Vertex AI with project: {GOOGLE_CLOUD_PROJECT}")
+            aiplatform.init(project=GOOGLE_CLOUD_PROJECT)
         
         # Configure Gemini API with API key from environment (optional)
         GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
         if GOOGLE_API_KEY:
+            print("Configuring Gemini with API key")
             genai.configure(api_key=GOOGLE_API_KEY)
-        else:
+        elif GOOGLE_CLOUD_PROJECT:
             # Configure using application default credentials
+            print("Configuring Gemini with application default credentials")
             genai.configure(project=GOOGLE_CLOUD_PROJECT)
-            
+        
         google_cloud_initialized = True
         print("Google Cloud services initialized successfully")
     else:
-        print("Google Cloud credentials not found or invalid")
+        print(f"Google Cloud credentials not found or invalid. Path: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'Not set')}")
 except Exception as e:
     print(f"Error initializing Google Cloud clients: {e}")
+    traceback.print_exc()
 
 @app.post("/recognize", response_model=RecognitionResponse)
 async def recognize_image(request: RecognitionRequest):
