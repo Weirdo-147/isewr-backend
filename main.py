@@ -50,7 +50,13 @@ CLIPDROP_API_KEY = os.getenv("CLIPDROP_API_KEY")
 IMAGINE_ART_API_KEY = os.getenv("IMAGINE_ART_API_KEY")
 SIGHTENGINE_API_USER = os.getenv("SIGHTENGINE_API_USER")
 SIGHTENGINE_API_SECRET = os.getenv("SIGHTENGINE_API_SECRET")
-GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+creds_base64 = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+if creds_base64:
+    creds_json = base64.b64decode(creds_base64).decode('utf-8')
+    with open("temp-credentials.json", "w") as f:
+        f.write(creds_json)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "temp-credentials.json"
+vision_client = vision.ImageAnnotatorClient()
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
 
 # Setup Supabase client if credentials are available
@@ -76,22 +82,33 @@ else:
 app = FastAPI(title="ISEWR API")
 
 # Configure CORS
+allowed_origins = [
+    "http://localhost:3000",
+    "https://isewr-frontend.vercel.app",
+    "https://isewr.vercel.app",
+    "https://isewr-frontend.onrender.com",
+    "https://isewr.onrender.com"
+]
+
+# Add additional origins from environment if specified
+if os.getenv("ALLOW_ORIGINS"):
+    additional_origins = os.getenv("ALLOW_ORIGINS").split(",")
+    allowed_origins.extend([origin.strip() for origin in additional_origins])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://isewr-frontend.vercel.app",
-        "https://isewr.vercel.app",
-        os.getenv("ALLOW_ORIGINS", "")
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Create uploads directory if it doesn't exist
-if os.environ.get("VERCEL_ENV"):
-    # On Vercel, use the /tmp directory for uploads
+if os.environ.get("RENDER"):
+    # On Render, use a persistent directory
+    UPLOAD_DIR = "/opt/render/project/src/uploads"
+elif os.environ.get("VERCEL_ENV"):
+    # On Vercel, use the /tmp directory
     UPLOAD_DIR = "/tmp/uploads"
 else:
     # Local development
@@ -104,7 +121,7 @@ VIDEOS_DIR = os.path.join(UPLOAD_DIR, "videos")
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
 # Mount the uploads directory to serve files
-if not os.environ.get("VERCEL_ENV"):
+if not (os.environ.get("VERCEL_ENV") or os.environ.get("RENDER")):
     # Only mount for local development
     app.mount("/images", StaticFiles(directory="uploads"), name="images")
 
@@ -1960,12 +1977,20 @@ async def root():
     """
     Root endpoint to check API status
     """
+    environment = "unknown"
+    if os.environ.get("RENDER"):
+        environment = "render"
+    elif os.environ.get("VERCEL_ENV"):
+        environment = os.environ.get("VERCEL_ENV")
+    else:
+        environment = "development"
+        
     return {
         "status": "online",
         "api": "ISEWR API",
         "version": "1.0",
-        "environment": os.environ.get("VERCEL_ENV", "development"),
-        "deployment": "Vercel" if os.environ.get("VERCEL_ENV") else "Local"
+        "environment": environment,
+        "deployment": "Render" if os.environ.get("RENDER") else "Vercel" if os.environ.get("VERCEL_ENV") else "Local"
     }
 
 @app.get("/debug-supabase")
